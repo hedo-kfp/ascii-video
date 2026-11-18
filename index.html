@@ -1,0 +1,1169 @@
+<title>글자 영사기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Layout: one black projector screen (HUD -> letter stage -> transport), then the converter's knobs,
+   the export bench, and the live source panel. Single dark look on purpose: it is a projector. */
+:root {
+  --screen: #030406;
+  --ink: #d9dde6;
+  --ink-dim: #7d8697;
+  --panel: #0a0e16;
+  --raise: #111827;
+  --rule: #1b2436;
+  --edge: #34415f;
+  --hi: #172036;
+  --live: #5fdc8f;
+  --busy: #f0a43a;
+  --rec: #ff5a5f;
+  --tok-kw: #ef7fae;
+  --tok-fn: #82b8ff;
+  --tok-str: #e9c47c;
+  --tok-num: #b7a0ff;
+  --tok-com: #5f6a7e;
+  --tok-const: #79d8c8;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--screen);
+  color: var(--ink);
+  font-family: var(--ui);
+  font-size: 14px;
+  line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px 32px;
+}
+.app { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+
+.screen { display: flex; flex-direction: column; gap: 14px; }
+.hud {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-family: var(--mono); font-size: 13px; line-height: 1.55; font-variant-numeric: tabular-nums;
+}
+.hud-l { min-width: 0; }
+.hud-l div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud-r { color: var(--live); white-space: nowrap; }
+.dot { display: inline-block; width: .55em; height: .55em; border-radius: 50%; background: currentColor; margin-right: .5em; vertical-align: .08em; }
+
+.stage { position: relative; display: flex; justify-content: center; background: #000; min-height: 120px; }
+.art { position: relative; max-width: 100%; }
+#view { display: block; width: 100%; }
+#glow {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  filter: blur(5px) saturate(1.15); opacity: .6; mix-blend-mode: screen; pointer-events: none;
+}
+.drop {
+  position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 16px;
+  border: 1px dashed var(--live); background: rgba(3, 4, 6, .86); color: var(--ink); font-size: 15px;
+}
+
+.transport { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12.5px; }
+.transport input[type=range] { flex: 1 1 auto; min-width: 0; }
+.time { color: var(--ink-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+button {
+  font: inherit; color: var(--ink); background: var(--raise);
+  border: 1px solid var(--rule); border-radius: 6px; padding: 7px 12px; cursor: pointer;
+}
+.transport button { font-family: var(--mono); font-size: 12.5px; padding: 5px 10px; background: transparent; white-space: nowrap; }
+button:hover:not(:disabled) { border-color: var(--edge); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
+button.primary { background: var(--live); color: #04140b; border-color: var(--live); font-weight: 600; }
+button.rec { color: var(--rec); }
+button.rec.on { background: var(--rec); color: #1a0405; border-color: var(--rec); font-weight: 600; }
+input[type=range], input[type=checkbox] { accent-color: var(--live); }
+
+.panel {
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 16px; display: flex; flex-direction: column; gap: 14px;
+}
+.panel h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-dim); letter-spacing: .02em; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.hint { color: var(--ink-dim); font-size: 12.5px; }
+.knobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px 18px; }
+.knob { display: flex; flex-direction: column; gap: 6px; font-size: 13px; min-width: 0; }
+.knob .top { display: flex; justify-content: space-between; gap: 8px; }
+.knob output { font-family: var(--mono); color: var(--ink-dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+select, input[type=text] {
+  font: inherit; color: var(--ink); background: var(--raise);
+  border: 1px solid var(--rule); border-radius: 6px; padding: 7px 9px; width: 100%; min-width: 0;
+}
+.row select { width: auto; }
+input[type=text] { font-family: var(--mono); }
+.checks { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; font-size: 13px; }
+.checks label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.status { font-size: 13px; min-height: 1.5em; }
+.bar { height: 4px; background: var(--rule); border-radius: 2px; overflow: hidden; }
+.bar > div { height: 100%; width: 0; background: var(--live); }
+
+.code { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.code-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 8px 14px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: 12.5px;
+}
+.run { color: var(--ink-dim); white-space: nowrap; }
+.run .dot { color: var(--busy); }
+.run.idle .dot { color: var(--ink-dim); }
+.code-body {
+  height: calc(13 * 1.75em); overflow: auto; font-family: var(--mono); font-size: 12.5px;
+  line-height: 1.75; padding-block: 6px; scroll-behavior: smooth;
+}
+.code-lines { width: max-content; min-width: 100%; }
+.ln { display: flex; white-space: pre; padding-right: 16px; }
+.ln.cur { background: var(--hi); }
+.no { flex: none; width: 4.4em; padding-right: 1.4em; text-align: right; color: var(--tok-com); user-select: none; }
+.k { color: var(--tok-kw); } .f { color: var(--tok-fn); } .s { color: var(--tok-str); }
+.n { color: var(--tok-num); } .c { color: var(--tok-com); font-style: italic; } .K { color: var(--tok-const); }
+
+.vid { position: fixed; left: 0; bottom: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+
+@media (max-width: 560px) {
+  .hud { font-size: 11.5px; }
+  .code-body { font-size: 11px; }
+  .transport { gap: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { .code-body { scroll-behavior: auto; } }
+</style>
+
+<main class="app">
+  <section class="screen" aria-label="변환 화면">
+    <div class="hud">
+      <div class="hud-l">
+        <div id="hudName">demo.loop · ascii</div>
+        <div id="hudFrame">frame 0000 · 480×270</div>
+        <div>letters <span id="hudLetters">0</span></div>
+      </div>
+      <div class="hud-r"><span class="dot"></span>t <span id="hudClock">0.00s</span></div>
+    </div>
+    <div class="stage" id="stage">
+      <div class="art" id="art">
+        <canvas id="view" role="img" aria-label="불러온 영상을 글자로 바꾼 화면"></canvas>
+        <canvas id="glow" aria-hidden="true"></canvas>
+      </div>
+      <div class="drop" id="dropHint" hidden>여기에 놓으면 바로 글자로 바꿔요</div>
+    </div>
+    <div class="transport">
+      <button type="button" id="playBtn">❚❚ pause</button>
+      <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="재생 위치">
+      <span class="time" id="timeLabel">0:00 / 0:08</span>
+      <button type="button" id="muteBtn" aria-pressed="false">♪ on</button>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="영상 불러오기와 변환 설정">
+    <div class="row">
+      <button type="button" class="primary" id="openBtn">영상 불러오기</button>
+      <button type="button" id="demoBtn">데모 보기</button>
+      <input type="file" id="fileIn" accept="video/*,image/*" hidden>
+      <span class="hint">mp4 · webm · mov(H.264) · gif · 사진. 화면에 끌어다 놓아도 돼요. 파일은 이 기기 밖으로 나가지 않아요.</span>
+    </div>
+    <div class="knobs">
+      <label class="knob"><span class="top">글자 수 (가로) <output id="colsOut">128</output></span>
+        <input type="range" id="cols" min="40" max="220" step="2" value="128"></label>
+      <label class="knob"><span class="top">글자 세트</span>
+        <select id="set"></select></label>
+      <label class="knob" id="customWrap" hidden><span class="top">내 글자 (어두움 → 밝음)</span>
+        <input type="text" id="custom" value=".:-=+*#%@" spellcheck="false" autocomplete="off"></label>
+      <label class="knob"><span class="top">색</span>
+        <select id="color">
+          <option value="source">원본 색</option>
+          <option value="green">초록 터미널</option>
+          <option value="amber">호박색 모니터</option>
+          <option value="white">흰색</option>
+        </select></label>
+      <label class="knob"><span class="top">채도 <output id="satOut">1.20</output></span>
+        <input type="range" id="sat" min="0" max="2.5" step="0.05" value="1.2"></label>
+      <label class="knob"><span class="top">밝기 <output id="brightOut">0.00</output></span>
+        <input type="range" id="bright" min="-0.5" max="0.5" step="0.01" value="0"></label>
+      <label class="knob"><span class="top">대비 <output id="contrastOut">1.20</output></span>
+        <input type="range" id="contrast" min="0.4" max="3" step="0.05" value="1.2"></label>
+      <label class="knob"><span class="top">감마 <output id="gammaOut">1.00</output></span>
+        <input type="range" id="gamma" min="0.4" max="2.5" step="0.05" value="1"></label>
+      <label class="knob"><span class="top">어두운 곳 비우기 <output id="cutOut">0.08</output></span>
+        <input type="range" id="cut" min="0" max="0.7" step="0.01" value="0.08"></label>
+    </div>
+    <div class="checks">
+      <label><input type="checkbox" id="invert"> 밝기 반전</label>
+      <label><input type="checkbox" id="steady" checked> 글자 깜빡임 줄이기</label>
+      <label><input type="checkbox" id="glowOn" checked> 글로우</label>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="내보내기">
+    <h2>내보내기</h2>
+    <div class="row">
+      <button type="button" class="rec" id="recBtn">● 영상으로 녹화</button>
+      <div class="checks"><label><input type="checkbox" id="recHud" checked> 위쪽 정보(파일명·letters·t) 같이 찍기</label></div>
+    </div>
+    <div class="row">
+      <button type="button" id="codeBtn">코드로 변환</button>
+      <select id="codeFmt" aria-label="코드 형식">
+        <option value="html">HTML 플레이어 (.html)</option>
+        <option value="txt">텍스트 프레임 (.txt)</option>
+        <option value="json">JSON (.json)</option>
+      </select>
+      <select id="codeFps" aria-label="초당 프레임">
+        <option value="12">12 fps</option>
+        <option value="15" selected>15 fps</option>
+        <option value="24">24 fps</option>
+        <option value="30">30 fps</option>
+      </select>
+      <div class="checks"><label><input type="checkbox" id="codeColor" checked> 색 포함</label></div>
+    </div>
+    <div class="row">
+      <button type="button" id="copyBtn">지금 프레임 텍스트 복사</button>
+      <span class="hint">녹화는 처음부터 끝까지 재생하면서 소리까지 같이 찍어요. 코드 변환은 영상을 한 장씩 넘기며 글자로 바꿔요.</span>
+    </div>
+    <div class="bar" id="bar" hidden><div id="barFill"></div></div>
+    <div class="status" id="status" role="status"></div>
+  </section>
+
+  <section class="code" aria-label="실행 중인 변환 코드">
+    <div class="code-head"><span>ascii.js</span><span class="run idle" id="runState"><span class="dot"></span><span id="runText">paused</span></span></div>
+    <div class="code-body" id="codeBody"><div class="code-lines" id="codeLines"></div></div>
+  </section>
+</main>
+<video id="video" class="vid" playsinline preload="auto"></video>
+
+<script id="src">
+'use strict';
+// ascii.js · turns any video into letters, live
+//
+// per frame:  draw the frame small, 2x4 pixels per letter cell  ->  average
+// each cell  ->  brightness picks the letter, hue picks the alphabet  ->
+// stamp white glyphs from an atlas, then multiply the colour in.
+
+const $ = id => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const TAU = Math.PI * 2;
+
+// ── alphabets, dim -> bright ─────────────────────────────────────────
+const HUE_RAMPS = [
+  '.:-=+*#%@',     // 0  white, cream, grey
+  '.,:;iaaa',      // 1  green: grass becomes a lawn of a's
+  '.:-=+*#&$@',    // 2  blue
+  '.:~=+*#$@',     // 3  cyan
+  '.`:*+oO0@',     // 4  yellow, orange
+  '.:*+o%&@',      // 5  pink, red
+  '.:-+*x#%@',     // 6  violet
+];
+const SETS = {
+  hue:     { label: '색 따라 글자 바꾸기', ramps: HUE_RAMPS },
+  classic: { label: '기본 .:-=+*#%@', ramps: ['.:-=+*#%@'] },
+  fine:    { label: '촘촘하게 (70단계)',
+             ramps: [".'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"] },
+  blocks:  { label: '블록 ░▒▓█', ramps: ['░▒▓█'] },
+  braille: { label: '점자 (세밀하게)', braille: true },
+  custom:  { label: '직접 입력', ramps: null },
+};
+const MONO = { green: [95, 255, 150], amber: [255, 180, 60], white: [235, 238, 245] };
+// braille dots: [column, row, bit]
+const DOTS = [[0, 0, 1], [0, 1, 2], [0, 2, 4], [1, 0, 8], [1, 1, 16], [1, 2, 32], [0, 3, 64], [1, 3, 128]];
+
+function alphabetFor(r, g, b) {
+  const mx = Math.max(r, g, b), d = mx - Math.min(r, g, b);
+  if (mx <= 0 || d / mx < 0.2) return 0;
+  let h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h *= 60;
+  if (h < 14 || h >= 315) return 5;
+  if (h < 68) return 4;
+  if (h < 160) return 1;
+  if (h < 196) return 3;
+  if (h < 252) return 2;
+  return 6;
+}
+
+// ── settings ──────────────────────────────────────────────────────────
+const S = {};
+const ctl = {
+  cols: $('cols'), set: $('set'), custom: $('custom'), color: $('color'), sat: $('sat'),
+  bright: $('bright'), contrast: $('contrast'), gamma: $('gamma'), cut: $('cut'),
+  invert: $('invert'), steady: $('steady'), glow: $('glowOn'),
+};
+for (const [key, set] of Object.entries(SETS)) ctl.set.add(new Option(set.label, key));
+
+function readSettings() {
+  S.cols = +ctl.cols.value; S.set = ctl.set.value; S.custom = ctl.custom.value;
+  S.color = ctl.color.value; S.sat = +ctl.sat.value; S.bright = +ctl.bright.value;
+  S.contrast = +ctl.contrast.value; S.gamma = +ctl.gamma.value; S.cut = +ctl.cut.value;
+  S.invert = ctl.invert.checked; S.steady = ctl.steady.checked; S.glow = ctl.glow.checked;
+  $('colsOut').textContent = S.cols;
+  for (const k of ['sat', 'bright', 'contrast', 'gamma', 'cut']) $(k + 'Out').textContent = S[k].toFixed(2);
+  $('customWrap').hidden = S.set !== 'custom';
+}
+
+// how bright a pixel reads after the knobs
+function tone(r, g, b) {
+  const mx = Math.max(r, g, b), l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  let v = clamp((0.6 * mx + 0.4 * l - 0.5) * S.contrast + 0.5 + S.bright);
+  v = Math.pow(v, 1 / S.gamma);
+  return S.invert ? 1 - v : v;
+}
+
+// ── the letter grid ───────────────────────────────────────────────────
+const sample = document.createElement('canvas');
+const sctx = sample.getContext('2d', { willReadFrequently: true });
+const colorCv = document.createElement('canvas');
+const colorCtx = colorCv.getContext('2d');
+let COLS = 0, ROWS = 0, SW = 0, SH = 0;
+let memV, memK, memA, cellGlyph, colorImg;
+let GLYPHS = [], RAMP_I = [];
+
+function buildGlyphTable() {
+  const set = SETS[S.set];
+  if (set.braille) {
+    GLYPHS = Array.from({ length: 256 }, (_, b) => String.fromCharCode(0x2800 + b));
+    RAMP_I = [];
+    return;
+  }
+  const own = [...S.custom.replace(/\s+/g, '')];
+  const ramps = set.ramps || [own.length ? own.join('') : '.:-=+*#%@'];
+  GLYPHS = [...new Set([...ramps.join('')])];
+  RAMP_I = ramps.map(r => [...r].map(ch => GLYPHS.indexOf(ch)));
+}
+
+function setupGrid(force) {
+  const cols = S.cols;
+  const rows = clamp(Math.round((cols * source.h) / source.w / 2), 6, 260);
+  if (!force && cols === COLS && rows === ROWS) return;
+  COLS = cols; ROWS = rows; SW = COLS * 2; SH = ROWS * 4;
+  sample.width = SW; sample.height = SH;
+  colorCv.width = COLS; colorCv.height = ROWS;
+  const n = COLS * ROWS;
+  memV = new Float32Array(n);
+  memK = new Int16Array(n);
+  memA = new Uint8Array(n).fill(255);
+  cellGlyph = new Int16Array(n).fill(-1);
+  colorImg = colorCtx.createImageData(COLS, ROWS);
+  for (let i = 3; i < colorImg.data.length; i += 4) colorImg.data[i] = 255;
+  sizeScreen();
+}
+
+function resetMemory() {
+  if (!memV) return;
+  memV.fill(0); memK.fill(0); memA.fill(255); cellGlyph.fill(-1);
+}
+
+function sampleFrame() {
+  if (source.kind === 'demo') drawDemo(demoTime());
+  sctx.imageSmoothingEnabled = true;
+  sctx.imageSmoothingQuality = 'high';
+  sctx.fillStyle = '#000';
+  sctx.fillRect(0, 0, SW, SH);
+  try { sctx.drawImage(source.el, 0, 0, SW, SH); } catch (e) { /* frame not ready yet */ }
+  return sctx.getImageData(0, 0, SW, SH).data;
+}
+
+// a cell "moved" if its brightness jumped more than STILL; still cells ease
+// toward the new value and only change letter once they clear MARGIN
+const STILL = 6 / 255, EASE = 0.35, MARGIN = 0.18;
+
+function letters(px) {
+  if (SETS[S.set].braille) return lettersBraille(px);
+  const rowW = SW * 4, hue = S.set === 'hue', cut = S.cut;
+  let count = 0;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      let R = 0, G = 0, B = 0, o = r * 4 * rowW + c * 8;
+      for (let k = 0; k < 4; k++, o += rowW) {
+        R += px[o] + px[o + 4]; G += px[o + 1] + px[o + 5]; B += px[o + 2] + px[o + 6];
+      }
+      R /= 2040; G /= 2040; B /= 2040;                   // 8 samples x 255
+      const i = r * COLS + c;
+      let v = tone(R, G, B);
+      if (S.steady) {
+        const was = memV[i];
+        v = memV[i] = Math.abs(v - was) > STILL ? v : was + (v - was) * EASE;
+      }
+      if (v <= (memK[i] > 0 ? cut - 0.012 : cut + 0.012) || v <= 0.004) {
+        memK[i] = 0; cellGlyph[i] = -1;                   // a hole: no letter here
+        continue;
+      }
+      const a = hue ? alphabetFor(R, G, B) : 0, ramp = RAMP_I[a], n = ramp.length;
+      const lv = clamp((v - cut) / (1 - cut + 1e-6)) * n;
+      let k = memK[i];
+      if (!S.steady || a !== memA[i] || k <= 0 || Math.abs(lv - (k - 0.5)) > 0.5 + MARGIN) {
+        k = Math.min(n, 1 + Math.floor(lv));
+      }
+      memK[i] = k; memA[i] = a; cellGlyph[i] = ramp[k - 1];
+      paintCell(i * 4, R, G, B, v);
+      count++;
+    }
+  }
+  return count;
+}
+
+function lettersBraille(px) {
+  const thr = clamp(0.3 + S.cut);
+  let count = 0;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      let bits = 0, R = 0, G = 0, B = 0, on = 0, vs = 0;
+      for (const [dx, dy, bit] of DOTS) {
+        const o = ((r * 4 + dy) * SW + c * 2 + dx) * 4;
+        const pr = px[o] / 255, pg = px[o + 1] / 255, pb = px[o + 2] / 255;
+        const v = tone(pr, pg, pb);
+        if (v > thr) { bits |= bit; R += pr; G += pg; B += pb; vs += v; on++; }
+      }
+      const i = r * COLS + c;
+      if (!bits) { cellGlyph[i] = -1; memK[i] = 0; continue; }
+      cellGlyph[i] = bits; memK[i] = 1;
+      paintCell(i * 4, R / on, G / on, B / on, vs / on);
+      count++;
+    }
+  }
+  return count;
+}
+
+// the letter carries brightness; the paint mostly carries hue
+function paintCell(q, r, g, b, v) {
+  const out = colorImg.data;
+  if (S.color === 'source') {
+    const l = 0.2126 * r + 0.7152 * g + 0.0722 * b, s = S.sat;
+    r = clamp(l + (r - l) * s); g = clamp(l + (g - l) * s); b = clamp(l + (b - l) * s);
+    const f = (255 * (0.5 + 0.5 * v)) / Math.max(r, g, b, 0.02);
+    out[q] = r * f; out[q + 1] = g * f; out[q + 2] = b * f;
+  } else {
+    const m = MONO[S.color], f = 0.45 + 0.55 * v;
+    out[q] = m[0] * f; out[q + 1] = m[1] * f; out[q + 2] = m[2] * f;
+  }
+}
+
+// ── drawing surfaces (the screen, and the recorder) ──────────────────
+function makeSurface(cv) {
+  return { cv, ctx: cv.getContext('2d', { alpha: false }), atlas: document.createElement('canvas'),
+           cw: 1, ch: 2, ox: 0, oy: 0, slotW: 1, slotH: 1 };
+}
+
+function buildAtlas(sf) {
+  const slotW = Math.ceil(sf.cw) + 1, slotH = Math.ceil(sf.ch);
+  sf.slotW = slotW; sf.slotH = slotH;
+  const a = sf.atlas;
+  a.width = Math.max(1, slotW * GLYPHS.length); a.height = slotH;
+  const x = a.getContext('2d');
+  x.clearRect(0, 0, a.width, a.height);
+  x.fillStyle = '#fff';
+  if (SETS[S.set].braille) {
+    const rad = Math.max(0.5, Math.min(slotW / 4.4, slotH / 9.4));
+    for (let b = 1; b < 256; b++) {
+      for (const [dx, dy, bit] of DOTS) {
+        if (!(b & bit)) continue;
+        x.beginPath();
+        x.arc(b * slotW + slotW * (dx ? 0.7 : 0.3), slotH * (0.125 + 0.25 * dy), rad, 0, TAU);
+        x.fill();
+      }
+    }
+    return;
+  }
+  x.font = `500 ${(sf.cw / 0.6) * 0.96}px "JetBrains Mono", ui-monospace, Menlo, monospace`;
+  x.textAlign = 'center';
+  x.textBaseline = 'middle';
+  GLYPHS.forEach((ch, i) => x.fillText(ch, i * slotW + slotW / 2, slotH * 0.52));
+}
+
+function paint(sf) {
+  const x = sf.ctx, w = COLS * sf.cw, h = ROWS * sf.ch;
+  x.globalCompositeOperation = 'source-over';
+  x.globalAlpha = 1;
+  x.fillStyle = '#000';
+  x.fillRect(sf.ox, sf.oy, w, h);
+  for (let r = 0; r < ROWS; r++) {
+    const y = sf.oy + Math.round(r * sf.ch);
+    for (let c = 0; c < COLS; c++) {
+      const gi = cellGlyph[r * COLS + c];
+      if (gi >= 0) x.drawImage(sf.atlas, gi * sf.slotW, 0, sf.slotW, sf.slotH,
+                               sf.ox + Math.round(c * sf.cw), y, sf.slotW, sf.slotH);
+    }
+  }
+  x.globalCompositeOperation = 'multiply';               // white glyph x cell colour
+  x.imageSmoothingEnabled = false;
+  x.drawImage(colorCv, 0, 0, COLS, ROWS, sf.ox, sf.oy, w, h);
+  x.globalCompositeOperation = 'source-over';
+}
+
+const stage = $('stage'), art = $('art');
+const screen = makeSurface($('view'));
+const glowCv = $('glow'), glowCtx = glowCv.getContext('2d');
+
+function sizeScreen() {
+  if (!COLS) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  const maxH = Math.max(240, window.innerHeight * 0.72);
+  const cssW = Math.min(stage.clientWidth, (maxH * COLS) / (ROWS * 2));
+  art.style.width = cssW + 'px';
+  screen.cw = (cssW * dpr) / COLS; screen.ch = screen.cw * 2;
+  screen.cv.width = Math.max(1, Math.round(COLS * screen.cw));
+  screen.cv.height = Math.max(1, Math.round(ROWS * screen.ch));
+  screen.cv.style.height = (ROWS * screen.ch) / dpr + 'px';
+  glowCv.width = Math.max(1, Math.round(screen.cv.width / 3));
+  glowCv.height = Math.max(1, Math.round(screen.cv.height / 3));
+  buildAtlas(screen);
+  needDraw = true;
+}
+
+// ── sources: the demo loop, a video file, or a still image ────────────
+const video = $('video');
+const DEMO_LEN = 8;
+const demo = { cv: document.createElement('canvas'), playing: true, t0: performance.now(), held: 0 };
+demo.cv.width = 480; demo.cv.height = 270;
+const dctx = demo.cv.getContext('2d');
+let source = { kind: 'demo', el: demo.cv, name: 'demo.loop', w: 480, h: 270 };
+let objectUrl = null;
+
+function demoTime() {
+  return demo.playing ? ((performance.now() - demo.t0) / 1000) % DEMO_LEN : demo.held;
+}
+function demoSeek(t) { demo.held = t; demo.t0 = performance.now() - t * 1000; }
+
+function drawDemo(t) {
+  const g = dctx, w = 480, h = 270, ph = (t / DEMO_LEN) * TAU;
+  let k = g.createLinearGradient(0, 0, 0, 190);
+  k.addColorStop(0, '#182a63'); k.addColorStop(0.6, '#5d86d8'); k.addColorStop(1, '#ffc58c');
+  g.fillStyle = k; g.fillRect(0, 0, w, h);
+  k = g.createRadialGradient(350, 120, 4, 360, 135, 48);
+  k.addColorStop(0, '#fff6cf'); k.addColorStop(1, '#ff9a52');
+  g.fillStyle = k; g.beginPath(); g.arc(360, 135 + Math.sin(ph) * 6, 44, 0, TAU); g.fill();
+  for (const [dx, dy, r] of [[0, 0, 26], [28, -10, 30], [58, 2, 24], [-26, 6, 18]]) {
+    const cx = ((t * 22 + 40) % 640) - 90 + dx, cy = 60 + dy;
+    k = g.createRadialGradient(cx - r * 0.3, cy - r * 0.4, 2, cx, cy, r * 1.05);
+    k.addColorStop(0, '#ffffff'); k.addColorStop(1, '#8e97c9');
+    g.fillStyle = k; g.beginPath(); g.arc(cx, cy, r, 0, TAU); g.fill();
+  }
+  const hillY = (x, a, f, p) => a + Math.sin(x * f + p) * 14 + Math.sin(x * f * 2.7 + p * 2) * 5;
+  for (const [base, f, c1, c2, sp] of [[178, 0.012, '#3f8f6a', '#1d4a3a', 0.4], [206, 0.017, '#8be27c', '#2b7a3d', 1]]) {
+    k = g.createLinearGradient(0, base - 20, 0, h);
+    k.addColorStop(0, c1); k.addColorStop(1, c2);
+    g.fillStyle = k; g.beginPath(); g.moveTo(0, h);
+    for (let x = 0; x <= w; x += 6) g.lineTo(x, hillY(x, base, f, ph * sp));
+    g.lineTo(w, h); g.closePath(); g.fill();
+  }
+  for (let i = 0; i < 14; i++) {
+    const x = (i * 37 + 15) % w, y = hillY(x, 206, 0.017, ph) + 14 + (i % 3) * 9;
+    g.fillStyle = i % 2 ? '#ff8fb3' : '#ffe27a';
+    g.beginPath(); g.arc(x, y, 4, 0, TAU); g.fill();
+  }
+  const bx = 70 + ((t * 48) % 340), by = 196 - Math.abs(Math.sin(t * 3.2)) * 82;
+  k = g.createRadialGradient(bx - 8, by - 9, 2, bx, by, 24);
+  k.addColorStop(0, '#ffffff'); k.addColorStop(1, '#9a9fb0');
+  g.fillStyle = k; g.beginPath(); g.ellipse(bx, by, 22, 22, 0, 0, TAU); g.fill();
+}
+
+function setSource(next) {
+  source = next;
+  setupGrid(true);
+  resetMemory();
+  needDraw = true;
+  syncTransport();
+}
+
+function useDemo() {
+  if (busy) return;
+  video.pause();
+  demo.playing = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  demoSeek(demo.playing ? 0 : 2.6);
+  setSource({ kind: 'demo', el: demo.cv, name: 'demo.loop', w: 480, h: 270 });
+  say('');
+}
+
+function loadFile(file) {
+  if (!file || busy) return;
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  objectUrl = URL.createObjectURL(file);
+  demo.playing = false;
+  if (file.type.startsWith('image/') && file.type !== 'image/gif' || /\.(png|jpe?g|webp|bmp)$/i.test(file.name)) {
+    const img = new Image();
+    img.onload = () => setSource({ kind: 'image', el: img, name: file.name, w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = () => say('이 사진은 열 수 없어요. png나 jpg로 다시 넣어 주세요.');
+    img.src = objectUrl;
+    return;
+  }
+  if (file.type === 'image/gif') {
+    const img = new Image();                       // browsers animate a gif <img>, so keep drawing it
+    img.onload = () => { setSource({ kind: 'gif', el: img, name: file.name, w: img.naturalWidth, h: img.naturalHeight }); };
+    img.onerror = () => say('이 gif는 열 수 없어요.');
+    img.src = objectUrl;
+    art.append(img); img.className = 'vid';
+    return;
+  }
+  video.loop = true;
+  video.src = objectUrl;
+  video.load();
+  video.onloadedmetadata = () => {
+    setSource({ kind: 'video', el: video, name: file.name, w: video.videoWidth || 16, h: video.videoHeight || 9 });
+    say(`${file.name} · ${video.videoWidth}×${video.videoHeight} · ${fmt(video.duration)}`);
+    playVideo(false);
+  };
+}
+
+video.addEventListener('error', () => {
+  if (!video.src) return;
+  say('이 영상 형식은 브라우저가 못 읽어요. mp4(H.264)나 webm으로 바꿔서 넣어 주세요.');
+});
+video.addEventListener('seeked', () => { needDraw = true; });
+video.addEventListener('play', syncTransport);
+video.addEventListener('pause', syncTransport);
+video.addEventListener('ended', () => { if (recorder) stopRecording(); syncTransport(); });
+
+// ── sound: routed through Web Audio so the recorder can hear it ───────
+let AC = null, monitor = null, recDest = null, muted = false;
+function ensureAudio() {
+  if (AC || source.kind !== 'video') { if (AC) AC.resume(); return; }
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    const src = AC.createMediaElementSource(video);
+    monitor = AC.createGain();
+    monitor.gain.value = muted ? 0 : 1;
+    video.muted = false;                  // muting now happens on the monitor, so the recorder still hears it
+    recDest = AC.createMediaStreamDestination();
+    src.connect(monitor); monitor.connect(AC.destination);
+    src.connect(recDest);
+    AC.resume();
+  } catch (e) { AC = null; }
+}
+
+function playVideo(fromClick) {
+  if (fromClick) ensureAudio();           // an AudioContext wants a real click to start
+  video.play().catch(() => syncTransport());
+}
+
+function isPlaying() {
+  if (source.kind === 'video') return !video.paused && !video.ended;
+  if (source.kind === 'demo') return demo.playing;
+  return source.kind === 'gif';
+}
+function srcTime() {
+  return source.kind === 'video' ? video.currentTime || 0 : source.kind === 'demo' ? demoTime() : 0;
+}
+function srcDur() {
+  const d = source.kind === 'video' ? video.duration : source.kind === 'demo' ? DEMO_LEN : 0;
+  return isFinite(d) ? d : 0;
+}
+
+function togglePlay() {
+  if (busy === 'code') return;
+  if (source.kind === 'video') { video.paused || video.ended ? playVideo(true) : video.pause(); }
+  else if (source.kind === 'demo') {
+    if (demo.playing) { demo.held = demoTime(); demo.playing = false; }
+    else { demo.playing = true; demoSeek(demo.held); }
+  }
+  syncTransport();
+}
+
+function toggleMute() {
+  muted = !muted;
+  if (monitor) monitor.gain.setTargetAtTime(muted ? 0 : 1, AC.currentTime, 0.02);
+  else video.muted = muted;
+  syncTransport();
+}
+
+// ── page wiring ───────────────────────────────────────────────────────
+const playBtn = $('playBtn'), muteBtn = $('muteBtn'), seek = $('seek'), timeLabel = $('timeLabel');
+const runState = $('runState'), runText = $('runText');
+let busy = false, needDraw = true, seeking = false;
+
+const fmt = s => {
+  if (!isFinite(s)) return '0:00';
+  const m = Math.floor(s / 60), r = Math.floor(s % 60);
+  return `${m}:${String(r).padStart(2, '0')}`;
+};
+function say(msg) { $('status').textContent = msg; }
+
+function syncTransport() {
+  const on = isPlaying();
+  playBtn.textContent = on ? '❚❚ pause' : '▶ play';
+  playBtn.setAttribute('aria-label', on ? '일시정지' : '재생');
+  playBtn.disabled = source.kind === 'image' || source.kind === 'gif';
+  seek.disabled = !srcDur();
+  muteBtn.textContent = muted ? '♪ off' : '♪ on';
+  muteBtn.setAttribute('aria-pressed', String(muted));
+  muteBtn.disabled = source.kind !== 'video';
+  runState.classList.toggle('idle', !on);
+  if (!on) runText.textContent = 'paused';
+}
+
+playBtn.addEventListener('click', togglePlay);
+muteBtn.addEventListener('click', toggleMute);
+seek.addEventListener('input', () => {
+  const t = (seek.value / 1000) * srcDur();
+  if (source.kind === 'video') video.currentTime = t;
+  else if (source.kind === 'demo') demoSeek(t);
+  needDraw = true;
+});
+seek.addEventListener('pointerdown', () => { seeking = true; });
+window.addEventListener('pointerup', () => { seeking = false; });
+
+$('openBtn').addEventListener('click', () => $('fileIn').click());
+$('fileIn').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; });
+$('demoBtn').addEventListener('click', useDemo);
+
+const dropHint = $('dropHint');
+let dragDepth = 0;
+window.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; dropHint.hidden = false; });
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; dropHint.hidden = true; } });
+window.addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; dropHint.hidden = true;
+  loadFile(e.dataTransfer && e.dataTransfer.files[0]);
+});
+
+function onSettings() {
+  const before = { cols: S.cols, set: S.set, custom: S.custom };
+  readSettings();
+  if (S.set !== before.set || S.custom !== before.custom) {
+    buildGlyphTable();
+    resetMemory();
+    if (S.cols === before.cols) { buildAtlas(screen); if (recorder) buildAtlas(rec); }
+  }
+  if (S.cols !== before.cols) { setupGrid(); resetMemory(); }
+  glowCv.hidden = !S.glow;
+  needDraw = true;
+}
+for (const el of Object.values(ctl)) el.addEventListener('input', onSettings);
+
+document.addEventListener('keydown', e => {
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+  if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+  else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    const d = e.key === 'ArrowRight' ? 5 : -5;
+    if (source.kind === 'video') video.currentTime = clamp(video.currentTime + d, 0, video.duration || 0);
+    else if (source.kind === 'demo') demoSeek((demoTime() + d + DEMO_LEN) % DEMO_LEN);
+    needDraw = true;
+  } else if (e.key === 'm' || e.key === 'M') toggleMute();
+});
+
+let lastW = 0;
+new ResizeObserver(() => {
+  const w = stage.clientWidth;
+  if (w !== lastW) { lastW = w; sizeScreen(); }
+}).observe(stage);
+
+// ── HUD and the live source panel ─────────────────────────────────────
+const hudName = $('hudName'), hudFrame = $('hudFrame'), hudLetters = $('hudLetters'), hudClock = $('hudClock');
+let lettersNow = 0;
+function hudLines(count) {
+  const frame = String(Math.round(srcTime() * 30)).padStart(4, '0');
+  return [`${source.name} · ascii`, `frame ${frame} · ${source.w}×${source.h}`,
+          `letters ${count.toLocaleString('en-US')}`];
+}
+function hud(count) {
+  const [a, b] = hudLines(count);
+  hudName.textContent = a; hudFrame.textContent = b;
+  hudLetters.textContent = count.toLocaleString('en-US');
+  hudClock.textContent = srcTime().toFixed(2) + 's';
+  const d = srcDur();
+  timeLabel.textContent = `${fmt(srcTime())} / ${fmt(d)}`;
+  if (!seeking && d) seek.value = Math.round((srcTime() / d) * 1000);
+}
+
+const SRC = $('src').textContent.replace(/^\n+/, '').replace(/\s+$/, '').split('\n');
+const KW = new Set(('const let var function return if else for of in new while break continue '
+  + 'true false null this typeof async await try catch').split(' '));
+const TOKEN = /(\/\/.*$)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_$][\w$]*)|([\s\S])/g;
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function highlight(line) {
+  let html = '', m;
+  TOKEN.lastIndex = 0;
+  while ((m = TOKEN.exec(line))) {
+    if (m[1]) html += `<span class="c">${esc(m[1])}</span>`;
+    else if (m[2]) html += `<span class="s">${esc(m[2])}</span>`;
+    else if (m[3]) html += `<span class="n">${m[3]}</span>`;
+    else if (m[4]) {
+      const w = m[4];
+      const cls = KW.has(w) ? 'k' : line[TOKEN.lastIndex] === '(' ? 'f' : /^[A-Z][A-Z0-9_]+$/.test(w) ? 'K' : '';
+      html += cls ? `<span class="${cls}">${w}</span>` : w;
+    } else html += esc(m[0]);
+  }
+  return html || ' ';
+}
+const codeBody = $('codeBody'), codeLines = $('codeLines');
+codeLines.innerHTML = SRC.map((l, i) =>
+  `<div class="ln"><span class="no">${i + 1}</span><span>${highlight(l)}</span></div>`).join('');
+const LINES = codeLines.children;
+const PIPE = [];
+for (const name of ['sampleFrame', 'letters', 'paint']) {
+  const a = SRC.findIndex(l => l.startsWith(`function ${name}(`));
+  if (a < 0) continue;
+  let b = a;
+  while (b < SRC.length - 1 && SRC[b] !== '}') b++;
+  for (let i = a; i <= b; i++) PIPE.push(i);
+}
+let curLine = -1, followHold = 0, pipeStep = 0;
+for (const ev of ['wheel', 'touchstart', 'pointerdown']) {
+  codeBody.addEventListener(ev, () => { followHold = performance.now() + 6000; }, { passive: true });
+}
+function codeFollow() {
+  if (!PIPE.length) return;
+  const line = PIPE[pipeStep++ % PIPE.length];
+  if (curLine >= 0) LINES[curLine].classList.remove('cur');
+  LINES[line].classList.add('cur');
+  curLine = line;
+  if (performance.now() > followHold) {
+    codeBody.scrollTop = Math.max(0, line * LINES[0].offsetHeight - codeBody.clientHeight * 0.3);
+  }
+}
+
+// ── the frame loop: about 30 letters-frames a second ──────────────────
+let lastTs = 0, fpsTimes = [], lastFpsUi = 0, lastCode = 0;
+function frameOnce() {
+  if (!COLS) return 0;
+  const px = sampleFrame();
+  const count = letters(px);
+  colorCtx.putImageData(colorImg, 0, 0);
+  paint(screen);
+  if (S.glow) {
+    glowCtx.clearRect(0, 0, glowCv.width, glowCv.height);
+    glowCtx.drawImage(screen.cv, 0, 0, glowCv.width, glowCv.height);
+  }
+  if (recorder) paintRecording(count);
+  lettersNow = count;
+  hud(count);
+  return count;
+}
+
+function tick(ts) {
+  requestAnimationFrame(tick);
+  if (busy === 'code') return;
+  const live = isPlaying() || !!recorder;
+  if (live) { if (ts - lastTs < 1000 / 31) return; }
+  else if (!needDraw) return;
+  if (live && lastTs) { fpsTimes.push(ts - lastTs); if (fpsTimes.length > 20) fpsTimes.shift(); }
+  lastTs = live ? ts : 0;
+  needDraw = false;
+  frameOnce();
+  if (live && ts - lastCode > 110) { codeFollow(); lastCode = ts; }
+  if (live && ts - lastFpsUi > 500 && fpsTimes.length) {
+    const avg = fpsTimes.reduce((a, b) => a + b, 0) / fpsTimes.length;
+    runText.textContent = `running · ${Math.round(1000 / avg)} fps`;
+    runState.classList.remove('idle');
+    lastFpsUi = ts;
+  }
+}
+
+// ── saving files ──────────────────────────────────────────────────────
+const dlReady = window.claude && window.claude.use
+  ? window.claude.use('downloads').catch(() => null)
+  : Promise.resolve(null);
+
+async function saveFile(name, data) {
+  const dl = await dlReady;
+  if (dl) {
+    try {
+      await dl.save({ filename: name, data });
+      say(`${name} 저장했어요.`);
+    } catch (e) {
+      const c = e && e.code;
+      say(c === 'declined' ? '저장을 취소했어요.'
+        : c === 'too_large' ? '파일이 너무 커요. 글자 수나 fps를 낮춰서 다시 해 보세요.'
+        : c === 'rate_limited' ? '저장 창이 이미 열려 있어요. 잠시 뒤에 다시 눌러 주세요.'
+        : `저장하지 못했어요 (${c || '알 수 없는 이유'}).`);
+    }
+    return;
+  }
+  if (!window.claude) {                    // opened as a plain local file: a normal link works there
+    const blob = data instanceof Blob ? data : new Blob([data]);
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    say(`${name} 저장했어요.`);
+    return;
+  }
+  say('이 화면에서는 파일 저장이 막혀 있어요. claude.ai에서 이 페이지를 열어 주세요.');
+}
+
+const baseName = () => source.name.replace(/\.[^.]+$/, '') || 'video';
+
+// ── recording: the letters (plus HUD) and the original sound ──────────
+const rec = makeSurface(document.createElement('canvas'));
+const scratch = document.createElement('canvas');
+const FILTER_OK = 'filter' in CanvasRenderingContext2D.prototype;
+const MIMES = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus',
+               'video/webm;codecs=vp8,opus', 'video/webm'];
+let recorder = null, recChunks = [], recMime = '', recTimer = 0;
+const recBtn = $('recBtn');
+
+function prepareRecorder() {
+  const even = n => Math.max(2, Math.round(n / 2) * 2);
+  const aspect = (ROWS * 2) / COLS;
+  let artW = 1280;
+  if (artW * aspect > 1600) artW = 1600 / aspect;
+  const fs = Math.round(clamp(artW / 54, 13, 24));
+  const pad = Math.round(fs * 1.2);
+  const band = $('recHud').checked ? Math.round(pad * 1.6 + fs * 1.5 * 3) : 0;
+  rec.cv.width = even(artW);
+  rec.cw = rec.cv.width / COLS; rec.ch = rec.cw * 2;
+  rec.cv.height = even(band + ROWS * rec.ch + (band ? pad : 0));
+  rec.ox = 0; rec.oy = band; rec.fs = fs; rec.pad = pad; rec.band = band;
+  scratch.width = rec.cv.width; scratch.height = Math.ceil(ROWS * rec.ch);
+  buildAtlas(rec);
+}
+
+function paintRecording(count) {
+  const x = rec.ctx, W = rec.cv.width;
+  x.globalCompositeOperation = 'source-over';
+  x.fillStyle = '#000';
+  x.fillRect(0, 0, W, rec.cv.height);
+  if (rec.band) {
+    const fs = rec.fs, p = rec.pad, lh = fs * 1.5;
+    x.font = `${fs}px "JetBrains Mono", ui-monospace, Menlo, monospace`;
+    x.textBaseline = 'top'; x.textAlign = 'left'; x.fillStyle = '#d9dde6';
+    hudLines(count).forEach((l, k) => x.fillText(l, p, p + k * lh));
+    const t = `t ${srcTime().toFixed(2)}s`;
+    x.textAlign = 'right'; x.fillStyle = '#5fdc8f';
+    x.fillText(t, W - p, p);
+    x.beginPath();
+    x.arc(W - p - x.measureText(t).width - fs * 0.7, p + fs * 0.55, fs * 0.27, 0, TAU);
+    x.fill();
+  }
+  paint(rec);
+  if (S.glow && FILTER_OK) {
+    const h = scratch.height, sx = scratch.getContext('2d');
+    sx.clearRect(0, 0, scratch.width, h);
+    sx.drawImage(rec.cv, 0, rec.oy, W, h, 0, 0, W, h);
+    x.save();
+    x.globalCompositeOperation = 'lighter';
+    x.globalAlpha = 0.5;
+    x.filter = `blur(${Math.max(2, rec.cw * 0.9)}px)`;
+    x.drawImage(scratch, 0, rec.oy);
+    x.restore();
+  }
+}
+
+function lockKnobs(on) {
+  for (const el of [ctl.cols, ctl.set, ctl.custom, $('openBtn'), $('demoBtn'), $('codeBtn'), $('recHud')]) el.disabled = on;
+}
+
+function seekVideo(t) {
+  return new Promise(resolve => {
+    const target = Math.min(Math.max(0, t), Math.max(0, (video.duration || 0) - 0.001));
+    if (Math.abs(video.currentTime - target) < 1e-4 && video.readyState >= 2) return resolve();
+    const done = () => { video.removeEventListener('seeked', done); clearTimeout(to); resolve(); };
+    const to = setTimeout(done, 4000);
+    video.addEventListener('seeked', done);
+    video.currentTime = target;
+  });
+}
+
+async function startRecording() {
+  if (busy || recorder) return;
+  if (source.kind === 'image') { say('사진은 녹화할 게 없어요. 영상이나 gif를 넣어 주세요.'); return; }
+  if (!window.MediaRecorder || !rec.cv.captureStream) { say('이 브라우저는 화면 녹화를 지원하지 않아요. 크롬에서 열어 주세요.'); return; }
+  recMime = MIMES.find(m => MediaRecorder.isTypeSupported(m)) || '';
+  ensureAudio();
+  busy = 'rec';
+  lockKnobs(true);
+  prepareRecorder();
+  resetMemory();
+  if (source.kind === 'video') { video.pause(); video.loop = false; await seekVideo(0); }
+  if (source.kind === 'demo') { demoSeek(0); demo.playing = true; }
+  paintRecording(lettersNow);
+  const stream = rec.cv.captureStream(30);
+  if (source.kind === 'video' && recDest) {
+    for (const tr of recDest.stream.getAudioTracks()) stream.addTrack(tr);
+  }
+  recChunks = [];
+  try {
+    recorder = new MediaRecorder(stream, recMime ? { mimeType: recMime, videoBitsPerSecond: 10e6 } : {});
+  } catch (e) {
+    busy = false; lockKnobs(false);
+    say('녹화를 시작하지 못했어요.');
+    return;
+  }
+  recorder.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+  recorder.onstop = finishRecording;
+  recorder.start(250);
+  recBtn.classList.add('on');
+  recBtn.textContent = '■ 녹화 멈추고 저장';
+  if (source.kind === 'video') playVideo(true);
+  const t0 = performance.now(), limit = source.kind === 'video' ? 0 : DEMO_LEN * 1000;
+  recTimer = setInterval(() => {
+    const s = (performance.now() - t0) / 1000;
+    say(`녹화 중 · ${fmt(s)}${source.kind === 'video' ? ` / ${fmt(video.duration)}` : ''}`);
+    if (limit && performance.now() - t0 > limit) stopRecording();
+  }, 250);
+  syncTransport();
+}
+
+function stopRecording() {
+  if (recorder && recorder.state !== 'inactive') recorder.stop();
+}
+
+async function finishRecording() {
+  clearInterval(recTimer);
+  const mime = (recorder && recorder.mimeType) || recMime || 'video/webm';
+  recorder = null;
+  busy = false;
+  lockKnobs(false);
+  video.loop = true;
+  recBtn.classList.remove('on');
+  recBtn.textContent = '● 영상으로 녹화';
+  const blob = new Blob(recChunks, { type: mime });
+  recChunks = [];
+  if (!blob.size) { say('녹화된 내용이 없어요.'); return; }
+  const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+  say(`녹화 끝 · ${(blob.size / 1e6).toFixed(1)} MB · 저장 창을 띄울게요.`);
+  await saveFile(`${baseName()}-ascii.${ext}`, blob);
+}
+
+recBtn.addEventListener('click', () => (recorder ? stopRecording() : startRecording()));
+
+// ── converting to code: every frame as text (+ colours) ───────────────
+function frameText(trim) {
+  const braille = SETS[S.set].braille;
+  const lines = [];
+  for (let r = 0; r < ROWS; r++) {
+    let line = '';
+    for (let c = 0; c < COLS; c++) {
+      const gi = cellGlyph[r * COLS + c];
+      line += gi < 0 ? ' ' : braille ? String.fromCharCode(0x2800 + gi) : GLYPHS[gi];
+    }
+    lines.push(trim ? line.replace(/\s+$/, '') : line);
+  }
+  return lines.join('\n');
+}
+
+function frameColors() {                       // one byte per cell, RGB 3-3-2
+  const d = colorImg.data, n = COLS * ROWS, u = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const q = i * 4;
+    u[i] = (d[q] & 0xe0) | ((d[q + 1] & 0xe0) >> 3) | (d[q + 2] >> 6);
+  }
+  let s = '';
+  for (let i = 0; i < n; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+let cancelCode = false;
+async function convertToCode() {
+  if (busy === 'code') { cancelCode = true; return; }
+  if (busy) return;
+  const fps = +$('codeFps').value, fmtSel = $('codeFmt').value, withColor = $('codeColor').checked;
+  const dur = source.kind === 'video' ? video.duration || 0 : source.kind === 'demo' ? DEMO_LEN : 0;
+  let n = Math.max(1, Math.floor(dur * fps));
+  const MAX = 5400;
+  if (n > MAX) { n = MAX; say(`너무 길어서 앞에서 ${fmt(MAX / fps)}까지만 바꿀게요.`); }
+  busy = 'code';
+  cancelCode = false;
+  lockKnobs(true);
+  const codeBtn = $('codeBtn');
+  codeBtn.disabled = false;
+  codeBtn.textContent = '변환 멈추기';
+  const wasPlaying = isPlaying();
+  if (source.kind === 'video') video.pause();
+  if (source.kind === 'demo') { demo.held = 0; demo.playing = false; }
+  resetMemory();
+  $('bar').hidden = false;
+  const frames = [], colors = [];
+  for (let f = 0; f < n && !cancelCode; f++) {
+    if (source.kind === 'video') await seekVideo(f / fps);
+    else if (source.kind === 'demo') demo.held = f / fps;
+    frameOnce();
+    frames.push(frameText(false));
+    if (withColor) colors.push(frameColors());
+    if (f % 3 === 0 || f === n - 1) {
+      $('barFill').style.width = ((f + 1) / n) * 100 + '%';
+      say(`코드로 바꾸는 중 · ${f + 1} / ${n} 프레임`);
+      codeFollow();
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+  const stopped = cancelCode;
+  busy = false;
+  lockKnobs(false);
+  codeBtn.textContent = '코드로 변환';
+  $('bar').hidden = true;
+  $('barFill').style.width = '0';
+  if (source.kind === 'video') video.loop = true;
+  if (wasPlaying) togglePlay();
+  needDraw = true;
+  if (!frames.length) { say('바꾼 프레임이 없어요.'); return; }
+  const data = { cols: COLS, rows: ROWS, fps, name: source.name, braille: !!SETS[S.set].braille,
+                 frames, colors: withColor ? colors : null };
+  const name = baseName() + '-ascii';
+  say(`${stopped ? '멈춘 곳까지 ' : ''}${frames.length}프레임 변환 끝 · 저장 창을 띄울게요.`);
+  if (fmtSel === 'txt') await saveFile(name + '.txt', frames.join('\n\n') + '\n');
+  else if (fmtSel === 'json') await saveFile(name + '.json', JSON.stringify(data));
+  else await saveFile(name + '.html', playerHtml(data));
+}
+$('codeBtn').addEventListener('click', convertToCode);
+
+// a standalone page that plays the converted frames back
+function playerHtml(data) {
+  const json = JSON.stringify(data).replace(/</g, '\\u003c');
+  const end = '<' + '/script>';
+  return `<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(data.name)} · ascii</title>
+<style>
+html,body{margin:0;background:#000;color:#d9dde6;font:12px ui-monospace,Menlo,Consolas,monospace}
+main{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px;box-sizing:border-box}
+canvas{display:block;max-width:100%;cursor:pointer}
+p{margin:0;color:#7d8697}
+</style></head><body><main><canvas id="c"></canvas><p id="i"></p></main>
+<script>
+const D=${json};
+const cv=document.getElementById('c'),x=cv.getContext('2d',{alpha:false}),info=document.getElementById('i');
+const tint=document.createElement('canvas');tint.width=D.cols;tint.height=D.rows;
+const tx=tint.getContext('2d'),img=tx.createImageData(D.cols,D.rows);
+const chars=[...new Set(D.frames.join('').replace(/[\\s]/g,''))],idx=new Map(chars.map((c,i)=>[c,i]));
+const atlas=document.createElement('canvas');let cw=1,ch=2,sw=1,sh=1,f=0,play=true,last=0;
+function layout(){const dpr=Math.min(devicePixelRatio||1,2);
+const w=Math.min(innerWidth-24,(innerHeight-60)*D.cols/(D.rows*2));
+cw=w*dpr/D.cols;ch=cw*2;cv.width=Math.round(D.cols*cw);cv.height=Math.round(D.rows*ch);
+cv.style.width=w+'px';sw=Math.ceil(cw)+1;sh=Math.ceil(ch);
+atlas.width=Math.max(1,sw*chars.length);atlas.height=sh;const a=atlas.getContext('2d');a.fillStyle='#fff';
+a.font=(cw/0.6*0.96)+'px ui-monospace,Menlo,Consolas,monospace';a.textAlign='center';a.textBaseline='middle';
+chars.forEach((c,i)=>{const k=c.charCodeAt(0);if(k>=0x2800&&k<0x2900){const b=k-0x2800,r=Math.max(.5,Math.min(sw/4.4,sh/9.4));
+[[0,0,1],[0,1,2],[0,2,4],[1,0,8],[1,1,16],[1,2,32],[0,3,64],[1,3,128]].forEach(([dx,dy,bit])=>{if(b&bit){a.beginPath();
+a.arc(i*sw+sw*(dx?.7:.3),sh*(.125+.25*dy),r,0,6.2832);a.fill();}});}else a.fillText(c,i*sw+sw/2,sh*.52);});draw();}
+function draw(){const t=D.frames[f];x.globalCompositeOperation='source-over';x.fillStyle='#000';x.fillRect(0,0,cv.width,cv.height);
+let r=0,c=0;for(let j=0;j<t.length;j++){const ch2=t[j];if(ch2==='\\n'){r++;c=0;continue;}
+if(ch2!==' '){const g=idx.get(ch2);x.drawImage(atlas,g*sw,0,sw,sh,Math.round(c*cw),Math.round(r*ch),sw,sh);}c++;}
+const d=img.data;if(D.colors){const s=atob(D.colors[f]);for(let i=0;i<s.length;i++){const v=s.charCodeAt(i),q=i*4;
+d[q]=(v&224)*255/224;d[q+1]=((v&28)<<3)*255/224;d[q+2]=((v&3)<<6)*255/192;d[q+3]=255;}}
+else for(let q=0;q<d.length;q+=4){d[q]=95;d[q+1]=255;d[q+2]=150;d[q+3]=255;}
+tx.putImageData(img,0,0);x.globalCompositeOperation='multiply';x.imageSmoothingEnabled=false;
+x.drawImage(tint,0,0,D.cols,D.rows,0,0,cv.width,cv.height);x.globalCompositeOperation='source-over';
+info.textContent=D.name+' · frame '+(f+1)+'/'+D.frames.length+' · '+D.fps+' fps · '+(play?'클릭하면 멈춤':'클릭하면 재생');}
+function loop(ts){requestAnimationFrame(loop);if(!play||ts-last<1000/D.fps)return;last=ts;f=(f+1)%D.frames.length;draw();}
+cv.onclick=()=>{play=!play;draw();};addEventListener('resize',layout);
+(document.fonts?document.fonts.ready:Promise.resolve()).then(layout);requestAnimationFrame(loop);
+${end}
+</body></html>
+`;
+}
+
+$('copyBtn').addEventListener('click', () => {
+  const text = frameText(true);
+  const fallback = () => saveFile(baseName() + '-frame.txt', text + '\n');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(() => say(`지금 프레임(${COLS}×${ROWS} 글자)을 복사했어요.`))
+      .catch(() => { say('복사가 막혀 있어서 .txt 파일로 드릴게요.'); fallback(); });
+  } else fallback();
+});
+
+// ── boot ──────────────────────────────────────────────────────────────
+ctl.cols.value = stage.clientWidth < 520 ? 90 : 140;
+readSettings();
+buildGlyphTable();
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) { demo.playing = false; demoSeek(2.6); }
+setupGrid(true);
+syncTransport();
+requestAnimationFrame(tick);
+if (document.fonts) {
+  document.fonts.load('500 16px "JetBrains Mono"')
+    .then(() => { buildAtlas(screen); needDraw = true; })
+    .catch(() => {});
+}
+</script>
